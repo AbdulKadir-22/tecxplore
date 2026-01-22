@@ -2,14 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import Layout from '../components/Layout';
-import { Search, CheckCircle, XCircle, ChevronLeft, ScanLine } from 'lucide-react';
+import { QrCode, CheckCircle, ChevronLeft, ScanLine, XCircle, Search } from 'lucide-react';
 
 const EventVerification = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { getEvent, getEventParticipants, loadEventDetails, verifyParticipant } = useApp();
   
-  // Load data from API on mount
   useEffect(() => {
     loadEventDetails(id);
   }, [id]);
@@ -17,31 +16,51 @@ const EventVerification = () => {
   const event = getEvent(id);
   const participants = getEventParticipants(id);
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All'); 
-  const [selectedUser, setSelectedUser] = useState(null);
+  // Controls
   const [tokenInput, setTokenInput] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Pending'); 
+  const [feedback, setFeedback] = useState({ type: '', msg: '' });
   const [loading, setLoading] = useState(false);
 
+  // Filter the list for display (just visual)
   const filteredList = useMemo(() => {
     return participants.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            p.id.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      // Show all based on filter
+      return statusFilter === 'All' ? true : p.status === statusFilter;
     });
-  }, [participants, searchTerm, statusFilter]);
+  }, [participants, statusFilter]);
 
-  const handleVerification = async () => {
+  // --- FAST VERIFY LOGIC ---
+  const handleDirectVerification = async (e) => {
+    e.preventDefault(); // Prevent page reload
+    if (!tokenInput.trim()) return;
+
     setLoading(true);
-    setErrorMsg('');
+    setFeedback({ type: '', msg: '' });
+
+    // 1. Find participant locally first (to check if valid token)
+    const targetParticipant = participants.find(p => p.token === tokenInput.trim());
+
+    if (!targetParticipant) {
+      setFeedback({ type: 'error', msg: 'INVALID TOKEN: Participant not found.' });
+      setLoading(false);
+      return;
+    }
+
+    if (targetParticipant.status === 'Verified') {
+      setFeedback({ type: 'error', msg: `ALREADY VERIFIED: ${targetParticipant.name}` });
+      setTokenInput(''); // Clear to allow next scan
+      setLoading(false);
+      return;
+    }
+
+    // 2. Call API
     try {
-      await verifyParticipant(tokenInput, event.id);
-      setSelectedUser(null);
-      setTokenInput('');
+      await verifyParticipant(tokenInput.trim(), event.id);
+      setFeedback({ type: 'success', msg: `SUCCESS: ${targetParticipant.name} Verified!` });
+      setTokenInput(''); // Ready for next scan
     } catch (err) {
-      setErrorMsg('Token Verification Failed. Access Denied.');
+      setFeedback({ type: 'error', msg: 'Verification Failed. Server Error.' });
     } finally {
       setLoading(false);
     }
@@ -56,73 +75,107 @@ const EventVerification = () => {
           <ChevronLeft size={16} /> Back to Dashboard
         </button>
         
-        {/* Same Header UI */}
-        <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <ScanLine className="text-cyan-400" />
-              Verification Station
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">{event.title}</p>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <ScanLine className="text-cyan-400" />
+            Verification Station
+          </h1>
+          <p className="text-gray-400 text-sm mt-1">{event.title}</p>
         </div>
 
-        {/* Controls */}
-        <div className="bg-[#1e293b] p-4 rounded-lg border border-gray-700 mb-6 space-y-4 md:space-y-0 md:flex md:gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search by Name or ID..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[#0f172a] border border-gray-600 rounded pl-10 pr-4 py-2 text-white focus:border-cyan-500 outline-none"
-            />
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0">
-             {['All', 'Verified', 'Pending'].map(s => (
+        {/* --- MAIN ACTION AREA: TOKEN SCANNER --- */}
+        <div className="bg-[#1e293b] p-6 rounded-xl border border-gray-700 shadow-xl mb-8">
+          <form onSubmit={handleDirectVerification} className="flex flex-col md:flex-row gap-4">
+             <div className="relative flex-1">
+                <QrCode className="absolute left-4 top-3.5 text-cyan-400" size={20} />
+                <input 
+                  type="text" 
+                  placeholder="ENTER TOKEN HERE..." 
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  className="w-full bg-[#0f172a] border border-gray-600 rounded-lg pl-12 pr-4 py-3 text-white focus:border-cyan-500 outline-none font-mono tracking-wider text-lg shadow-inner"
+                  autoFocus
+                />
+             </div>
+             <button 
+               type="submit"
+               disabled={loading || !tokenInput}
+               className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-8 py-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+             >
+               {loading ? 'Verifying...' : 'VERIFY NOW'}
+             </button>
+          </form>
+
+          {/* Feedback Message */}
+          {feedback.msg && (
+            <div className={`mt-4 p-3 rounded-lg text-center font-bold border ${
+              feedback.type === 'success' 
+                ? 'bg-green-900/20 text-green-400 border-green-900' 
+                : 'bg-red-900/20 text-red-400 border-red-900'
+            }`}>
+               {feedback.msg}
+            </div>
+          )}
+        </div>
+
+        {/* --- LIST VIEW (For visual confirmation) --- */}
+        <div className="flex justify-between items-end mb-4 border-b border-gray-800 pb-2">
+           <h3 className="text-gray-400 text-sm font-bold uppercase tracking-wider">Participant List</h3>
+           <div className="flex gap-2">
+             {['Pending', 'Verified', 'All'].map(s => (
                <button
                  key={s}
                  onClick={() => setStatusFilter(s)}
-                 className={`px-3 py-2 rounded text-xs font-bold whitespace-nowrap ${
-                   statusFilter === s ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                 className={`px-3 py-1 rounded text-[10px] font-bold uppercase border transition ${
+                   statusFilter === s ? 'bg-gray-700 text-white border-gray-600' : 'text-gray-500 border-transparent hover:text-gray-300'
                  }`}
                >
                  {s}
                </button>
              ))}
-          </div>
+           </div>
         </div>
 
-        {/* List */}
         <div className="space-y-3">
+           {filteredList.length === 0 && (
+             <div className="text-center py-12 border border-dashed border-gray-800 rounded-lg">
+               <p className="text-gray-500 text-sm">No participants in '{statusFilter}' list.</p>
+             </div>
+           )}
+
           {filteredList.map(p => (
             <div 
               key={p.id} 
-              onClick={() => p.status !== 'Verified' && setSelectedUser(p)}
               className={`p-4 rounded-lg border flex justify-between items-center transition ${
                 p.status === 'Verified' 
-                  ? 'bg-purple-900/10 border-purple-900/50 cursor-default' 
-                  : 'bg-[#1e293b] border-gray-800 hover:border-cyan-500 cursor-pointer'
+                  ? 'bg-purple-900/10 border-purple-900/30 opacity-70' 
+                  : 'bg-[#1e293b] border-gray-800'
               }`}
             >
               <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-lg ${
+                    p.status === 'Verified' ? 'bg-purple-900' : 'bg-gray-700'
+                }`}>
                   {p.name.charAt(0)}
                 </div>
                 <div>
                   <h4 className="text-white font-bold">{p.name}</h4>
-                  <p className="text-xs text-gray-500">{p.id}</p>
+                  {/* <div className="flex gap-2 text-xs font-mono mt-0.5">
+                    <span className="text-cyan-600">{p.token}</span>
+                    <span className="text-gray-600">|</span>
+                    <span className="text-gray-500">{p.id}</span>
+                  </div> */}
                 </div>
               </div>
+              
               <div className="text-right">
                 {p.status === 'Verified' ? (
-                  <span className="flex items-center gap-1 text-purple-400 text-xs font-bold">
+                  <span className="flex items-center gap-1 text-purple-400 text-xs font-bold bg-purple-900/20 px-3 py-1 rounded-full">
                     <CheckCircle size={14} /> Verified
                   </span>
                 ) : (
-                  <span className="text-cyan-500 text-xs font-bold border border-cyan-800 px-2 py-1 rounded">
-                    VERIFY
+                  <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest bg-gray-800 px-2 py-1 rounded">
+                    Waiting
                   </span>
                 )}
               </div>
@@ -130,39 +183,6 @@ const EventVerification = () => {
           ))}
         </div>
 
-        {/* Modal */}
-        {selectedUser && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#1e293b] border border-gray-600 w-full max-w-sm rounded-xl p-6 shadow-2xl">
-              <div className="flex justify-between items-start mb-6">
-                <h3 className="text-white text-lg font-bold">Verify Identity</h3>
-                <button onClick={() => setSelectedUser(null)} className="text-gray-500 hover:text-white"><XCircle /></button>
-              </div>
-              
-              <div className="text-center mb-6">
-                <p className="text-white font-bold">{selectedUser.name}</p>
-                <p className="text-gray-400 text-xs">{selectedUser.id}</p>
-              </div>
-
-              <input 
-                type="text" 
-                placeholder="Enter Token" 
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                className="w-full bg-[#0f172a] border border-gray-600 text-white p-3 rounded text-center tracking-widest mb-2 uppercase"
-              />
-              {errorMsg && <p className="text-red-500 text-xs text-center mb-4">{errorMsg}</p>}
-
-              <button 
-                onClick={handleVerification}
-                disabled={loading}
-                className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded transition mt-2 disabled:opacity-50"
-              >
-                {loading ? 'Verifying...' : 'Confirm'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

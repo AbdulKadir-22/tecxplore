@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, CheckCircle, PlayCircle, User } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { Home, User, Shield, LayoutDashboard } from 'lucide-react';
 
 const NavItem = ({ to, icon: Icon, label, active }) => (
   <Link 
     to={to} 
     className={`flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 p-2 md:px-4 rounded-lg transition-colors ${
-      active ? 'text-blue-400 md:bg-blue-900/30' : 'text-gray-400 hover:text-gray-200'
+      active ? 'text-cyan-400 md:bg-cyan-900/20' : 'text-gray-400 hover:text-gray-200'
     }`}
   >
     <Icon size={20} />
@@ -15,6 +16,7 @@ const NavItem = ({ to, icon: Icon, label, active }) => (
 );
 
 const Layout = ({ children }) => {
+  const { currentUser } = useApp();
   const location = useLocation();
   const path = location.pathname;
 
@@ -29,8 +31,21 @@ const Layout = ({ children }) => {
             <p className="text-gray-500 text-xs">CONTROL CONSOLE</p>
           </div>
         </div>
+        
         <nav className="flex gap-2">
+          {/* 1. Standard Dashboard (For Everyone) */}
           <NavItem to="/dashboard" icon={Home} label="Dashboard" active={path === '/dashboard'} />
+
+          {/* 2. Admin Console (Only for Admins) */}
+          {currentUser?.role === 'SYSTEM_ADMIN' && (
+            <NavItem 
+              to="/admin/dashboard" 
+              icon={Shield} 
+              label="Admin Console" 
+              active={path.startsWith('/admin')} 
+            />
+          )}
+
           <NavItem to="/moderator" icon={User} label="Profile" active={path === '/moderator'} />
         </nav>
       </header>
@@ -43,7 +58,11 @@ const Layout = ({ children }) => {
       {/* MOBILE BOTTOM NAV */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#0f172a] border-t border-gray-800 flex justify-around items-center px-2 z-50">
         <NavItem to="/dashboard" icon={Home} label="Home" active={path === '/dashboard'} />
-        {/* Only show these if contextually relevant, or generic if strictly adhering to static nav */}
+        
+        {currentUser?.role === 'SYSTEM_ADMIN' && (
+          <NavItem to="/admin/dashboard" icon={Shield} label="Admin" active={path.startsWith('/admin')} />
+        )}
+
         <NavItem to="/moderator" icon={User} label="Profile" active={path === '/moderator'} />
       </nav>
     </div>

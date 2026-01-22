@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:5000';
+const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:5000';
 
 // Helper to get fresh headers every time a request is made
 const getHeaders = () => {
@@ -10,7 +10,7 @@ const getHeaders = () => {
 };
 
 export const apiClient = {
-  // AUTH
+  // --- AUTHENTICATION ---
   login: async (email, password) => {
     const response = await fetch(`${BASE_URL}/api/auth/login`, {
       method: 'POST',
@@ -21,7 +21,15 @@ export const apiClient = {
     return response.json();
   },
 
-  // EVENTS
+  getProfile: async () => {
+    const response = await fetch(`${BASE_URL}/api/auth/profile`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to fetch profile');
+    return response.json();
+  },
+
+  // --- EVENTS MANAGEMENT ---
   getAllEvents: async () => {
     const response = await fetch(`${BASE_URL}/api/events`, {
       headers: getHeaders(),
@@ -48,6 +56,7 @@ export const apiClient = {
     return response.json();
   },
 
+  // --- PARTICIPANT MANAGEMENT ---
   getParticipantsByEvent: async (eventId) => {
     const response = await fetch(`${BASE_URL}/api/participants/${eventId}`, {
       headers: getHeaders(),
@@ -56,7 +65,6 @@ export const apiClient = {
     return response.json();
   },
 
-  // PARTICIPANTS
   verifyToken: async (token, eventId) => {
     const response = await fetch(`${BASE_URL}/api/participants/verify`, {
       method: 'POST',
@@ -67,7 +75,6 @@ export const apiClient = {
     return response.json();
   },
 
-  // SUBMISSIONS
   submitParticipantData: async (data) => {
     const response = await fetch(`${BASE_URL}/api/submissions`, {
       method: 'POST',
@@ -78,12 +85,13 @@ export const apiClient = {
     return response.json();
   },
 
-  // ADMIN
+  // --- ADMIN FEATURES ---
   exportEventCSV: async (eventId) => {
     const response = await fetch(`${BASE_URL}/api/admin/events/${eventId}/export`, {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Export failed');
+    // Important: We return the BLOB (binary file) here, not JSON
     return response.blob();
   }
 };

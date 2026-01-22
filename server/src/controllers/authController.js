@@ -43,3 +43,27 @@ exports.login = async (req, res) => {
     res.status(500).json({ error: 'Server error during login', details: err.message });
   }
 };
+
+exports.getMe = async (req, res) => {
+  try {
+    // req.user is already set by the 'protect' middleware
+    const user = req.user;
+
+    // If user is a Coordinator, we want to expand the 'assignedEventIds' 
+    // to show actual event names, not just IDs.
+    if (user.role === 'COORDINATOR') {
+      const detailedCoordinator = await Coordinator.findById(user._id)
+        .select('-password') // Don't send password back
+        .populate('assignedEventIds', 'eventId name category status'); // Get these fields from Event model
+      
+      return res.status(200).json(detailedCoordinator);
+    }
+
+    // If user is Admin, just send their info (no events to populate)
+    const admin = await SystemAdmin.findById(user._id).select('-password');
+    res.status(200).json(admin);
+
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch profile', details: err.message });
+  }
+};
